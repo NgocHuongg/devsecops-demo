@@ -1,0 +1,23 @@
+services:
+  # Ứng dụng web mẫu có sẵn lỗ hổng (OWASP Juice Shop)
+  juice-shop:
+    image: bkimminich/juice-shop:latest
+    container_name: juice-shop
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  # OWASP ZAP - máy quét DAST
+  zap:
+    image: zaproxy/zap-stable:latest
+    container_name: zap
+    ports:
+      - "8080:8080"
+    # Chạy ZAP ở chế độ API (daemon) để có thể gọi quét từ ngoài
+    command: ["zap.sh", "-daemon", "-host", "0.0.0.0", "-port", "8080", "-config", "api.disablekey=true", "-config", "api.addrs.addr.name=.*", "-config", "api.addrs.addr.regex=true"]
+    volumes:
+      - zap-data:/home/zap/.ZAP
+    restart: unless-stopped
+
+volumes:
+  zap-data:

@@ -1,0 +1,3 @@
+# Báo cáo sinh ra từ lần quét
+*.sarif
+reports/

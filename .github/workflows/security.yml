@@ -1,0 +1,43 @@
+name: Security Pipeline
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  sast:
+    name: SAST - Semgrep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Bước 1: Quét SAST toàn bộ code, xuất báo cáo SARIF
+      - name: Semgrep scan
+        run: |
+          docker run --rm -v "$PWD:/src" semgrep/semgrep semgrep \
+            --config p/owasp-top-ten \
+            --config p/security-audit \
+            --metrics=off \
+            --sarif --output /src/semgrep.sarif \
+            /src
+
+      # Bước 2: Đưa kết quả lên tab Security của GitHub
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+
+      # Bước 3: SECURITY GATE — lỗi mức ERROR thì FAIL pipeline
+      - name: Security gate (fail on ERROR findings)
+        run: |
+          docker run --rm -v "$PWD:/src" semgrep/semgrep semgrep \
+            --config p/owasp-top-ten \
+            --config p/security-audit \
+            --metrics=off \
+            --severity ERROR --error \
+            /src
