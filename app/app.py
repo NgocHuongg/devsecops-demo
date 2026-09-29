@@ -75,3 +75,8 @@ if __name__ == "__main__":
 def run_cmd():
     import os
     return os.popen("ls " + request.args.get("dir")).read()
+
+@app.route("/run")
+def run_cmd():
+    import os
+    return os.popen("ls " + request.args.get("dir")).read()
