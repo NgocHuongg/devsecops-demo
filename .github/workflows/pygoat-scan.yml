@@ -1,0 +1,107 @@
+name: PyGoat - SAST & DAST
+
+# Quét SAST + DAST trên CÙNG một ứng dụng lỗi có chủ đích (OWASP PyGoat).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Ghim digest để số liệu thí nghiệm tái lập được (image :latest có thể đổi)
+  PYGOAT_IMAGE: pygoat/pygoat@sha256:26a75f7cd023a9c77158f55c54dbb405ab2b77aaf46dfb888f209735fa0d0b54
+
+jobs:
+  sast:
+    name: SAST - Semgrep (PyGoat)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Lấy mã nguồn từ CHÍNH image sẽ deploy → SAST và DAST quét cùng 1 phiên bản code
+      - name: Extract source from image
+        run: |
+          mkdir -p reports
+          docker create --name pygoat-src "$PYGOAT_IMAGE"
+          docker cp pygoat-src:/app/pygoat reports/pygoat-src
+          docker rm pygoat-src
+
+      - name: Semgrep scan
+        run: |
+          docker run --rm -v "$PWD/reports:/work" semgrep/semgrep semgrep \
+            --config p/owasp-top-ten \
+            --config p/security-audit \
+            --config p/django \
+            --metrics=off \
+            --json-output /work/pygoat-semgrep.json \
+            /work/pygoat-src
+
+      - name: Upload SAST report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pygoat-sast
+          path: reports/pygoat-semgrep.json
+
+      # SECURITY GATE: có finding mức ERROR là FAIL
+      - name: SAST gate (fail on ERROR)
+        run: python3 scripts/check_sast.py reports/pygoat-semgrep.json
+
+  dast:
+    name: DAST - ZAP authenticated (PyGoat)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy target app
+        run: |
+          docker network create scan-net
+          docker run -d --name pygoat -p 8000:8000 --network scan-net "$PYGOAT_IMAGE"
+          for i in $(seq 1 30); do curl -sf http://localhost:8000/login/ >/dev/null 2>&1 && break; sleep 2; done
+
+      # Các trang lab của PyGoat bắt buộc đăng nhập → tạo sẵn phiên cho ZAP,
+      # nếu không ZAP chỉ thấy được trang /login/
+      - name: Create scanner session
+        run: |
+          COOKIE=$(docker exec -i pygoat python3 pygoat/manage.py shell < scripts/pygoat_session.py | tail -1)
+          echo "::add-mask::$COOKIE"
+          echo "ZAP_COOKIE=$COOKIE" >> "$GITHUB_ENV"
+
+      # Full scan = spider + passive + ACTIVE scan (gửi payload tấn công thật vào app
+      # mục tiêu chạy trong runner). Cookie gắn vào mọi request; bỏ qua URL logout
+      # để ZAP không tự đăng xuất giữa chừng.
+      # Cookie có dấu cách ("sessionid=..; csrftoken=..") → phải bọc nháy đơn, vì
+      # ZAP tách -z bằng shlex; thiếu nháy thì csrftoken bị mất và form POST bị 403.
+      - name: ZAP full scan
+        run: |
+          mkdir -p reports
+          chmod 777 reports
+          docker run --rm --network scan-net \
+            -v "$PWD/reports:/zap/wrk:rw" zaproxy/zap-stable \
+            zap-full-scan.py -t http://pygoat:8000/ \
+            -J pygoat-zap.json -r pygoat-zap.html -m 3 -I \
+            -z "-config replacer.full_list(0).description=auth \
+                -config replacer.full_list(0).enabled=true \
+                -config replacer.full_list(0).matchtype=REQ_HEADER \
+                -config replacer.full_list(0).matchstr=Cookie \
+                -config replacer.full_list(0).regex=false \
+                -config 'replacer.full_list(0).replacement=$ZAP_COOKIE' \
+                -config globalexcludeurl.url_list.url(0).regex=.*logout.* \
+                -config globalexcludeurl.url_list.url(0).description=logout \
+                -config globalexcludeurl.url_list.url(0).enabled=true \
+                -config scanner.maxScanDurationInMins=20"
+
+      - name: Upload DAST report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pygoat-dast
+          path: |
+            reports/pygoat-zap.json
+            reports/pygoat-zap.html
+
+      # SECURITY GATE: có cảnh báo mức High là FAIL
+      - name: DAST gate (fail on High)
+        run: python3 scripts/check_dast.py reports/pygoat-zap.json

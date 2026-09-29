@@ -2,6 +2,8 @@
 # Chạy SAST local bằng Docker — giống hệt bước trong CI
 # Cách dùng: ./scan-sast.sh
 set -e
+# Git Bash trên Windows tự đổi "/src/..." thành "C:/Program Files/Git/src/..." → tắt đi
+export MSYS_NO_PATHCONV=1
 
 # pwd -W cho đường dẫn Windows (C:/...) để Docker mount được
 APP_DIR="$(pwd -W 2>/dev/null || pwd)/app"
