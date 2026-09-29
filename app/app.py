@@ -6,6 +6,7 @@ security gate chỉ chặn ERROR, WARNING chỉ cảnh báo.
 import ast
 import hashlib
 import json
+import os
 import sqlite3
 import subprocess
 
@@ -13,9 +14,9 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-# LỖ HỔNG 1: Hardcoded credential (CWE-798)
-DB_PASSWORD = "admin123"
-API_KEY = "sk-1234567890abcdef"
+# ĐÃ VÁ: đọc bí mật từ biến môi trường, không hardcode trong source
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "")
+API_KEY = os.environ.get("API_KEY", "")
 
 
 def get_db():
