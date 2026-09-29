@@ -41,3 +41,35 @@ jobs:
             --metrics=off \
             --severity ERROR --error \
             /src
+
+  dast:
+    name: DAST - OWASP ZAP
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # "Deploy" app mục tiêu (thực tế là deploy lên staging)
+      - name: Deploy target app
+        run: |
+          docker network create scan-net
+          docker run -d --name juice-shop -p 3000:3000 --network scan-net bkimminich/juice-shop
+          for i in $(seq 1 30); do curl -sf http://localhost:3000 >/dev/null 2>&1 && break; sleep 2; done
+
+      # Quét DAST baseline (passive) — spider + passive scan, không phá app
+      - name: ZAP baseline scan
+        run: |
+          mkdir -p reports
+          docker run --rm --network scan-net \
+            -v "$PWD/reports:/zap/wrk:rw" zaproxy/zap-stable \
+            zap-baseline.py -t http://juice-shop:3000 \
+            -J zap-dast.json -r zap-dast.html -m 5 -I
+
+      # SECURITY GATE: FAIL nếu có cảnh báo mức High
+      - name: DAST gate (fail on High)
+        run: python3 scripts/check_dast.py reports/zap-dast.json
+
+      - name: Upload DAST report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dast-report
+          path: reports/
