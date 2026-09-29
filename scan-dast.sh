@@ -6,6 +6,7 @@ set -e
 
 REPORTS="$(pwd -W 2>/dev/null || pwd)/reports"
 mkdir -p "$REPORTS"
+chmod 777 "$REPORTS" 2>/dev/null || true
 
 echo "==> Tao network scan-net + chay Juice Shop muc tieu"
 docker network create scan-net >/dev/null 2>&1 || true

@@ -59,6 +59,7 @@ jobs:
       - name: ZAP baseline scan
         run: |
           mkdir -p reports
+          chmod 777 reports   # container ZAP (user zap) phải ghi được vào đây
           docker run --rm --network scan-net \
             -v "$PWD/reports:/zap/wrk:rw" zaproxy/zap-stable \
             zap-baseline.py -t http://juice-shop:3000 \
