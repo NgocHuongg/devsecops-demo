@@ -75,3 +75,52 @@ jobs:
         with:
           name: dast-report
           path: reports/
+
+  secrets:
+    name: Secret Scan - Gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gate: phát hiện BẤT KỲ bí mật nào (key, password, token) là FAIL
+      - name: Gitleaks scan
+        run: |
+          mkdir -p reports
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --no-git --source /repo \
+            --report-format json --report-path /repo/reports/gitleaks.json -v
+
+      - name: Upload Gitleaks report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: reports/gitleaks.json
+
+  sca:
+    name: SCA - Trivy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gate: dependency có CVE mức CRITICAL là FAIL
+      - name: Trivy dependency scan (gate on CRITICAL)
+        run: |
+          docker run --rm -v "$PWD:/src" aquasec/trivy:latest \
+            fs --scanners vuln --severity CRITICAL --exit-code 1 /src
+
+      # Image scan: chỉ báo cáo (demo image cố ý nhiều CVE), không chặn
+      - name: Trivy image scan (report only)
+        if: always()
+        run: |
+          mkdir -p reports
+          docker run --rm -v "$PWD/reports:/out" aquasec/trivy:latest \
+            image --severity HIGH,CRITICAL --format table \
+            -o /out/trivy-image.txt bkimminich/juice-shop
+
+      - name: Upload Trivy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: reports/
