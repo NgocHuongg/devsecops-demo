@@ -88,7 +88,7 @@ jobs:
           mkdir -p reports
           docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
             detect --no-git --source /repo \
-            --exclude-path /repo/reports \
+            --config /repo/.gitleaks.toml \
             --report-format json --report-path /repo/reports/gitleaks.json -v
 
       - name: Upload Gitleaks report

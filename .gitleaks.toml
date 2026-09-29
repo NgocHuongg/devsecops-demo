@@ -1,0 +1,8 @@
+# Cấu hình Gitleaks: kế thừa rule mặc định + loại trừ thư mục báo cáo
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  """reports/.*""",
+]
